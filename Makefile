@@ -10,9 +10,9 @@ $(GIT_HOOKS):
 
 CC ?= gcc
 CFLAGS = \
-	-std=gnu99 -Wall -O0 -g
+	-std=gnu99 -fopenmp -Wall -O0 -g
 LDFLAGS = \
-	-lm
+	-lm -fopenmp
 
 ifeq ($(strip $(PROFILE)),1)
 PROF_FLAGS = -pg

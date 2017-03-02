@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <omp.h>
 
 #include "math-toolkit.h"
 #include "primitives.h"
@@ -458,41 +459,50 @@ void raytracing(uint8_t *pixels, color background_color,
                 light_node lights, const viewpoint *view,
                 int width, int height)
 {
-    point3 u, v, w, d;
-    color object_color = { 0.0, 0.0, 0.0 };
+    point3 u[SAMPLES], v[SAMPLES], w[SAMPLES], d[SAMPLES];
+    color object_color[SAMPLES] = {{ 0.0, 0.0, 0.0}};
 
     /* calculate u, v, w */
-    calculateBasisVectors(u, v, w, view);
+    #pragma omp parallel for
+    for(int i = 0; i < SAMPLES; i++)
+        calculateBasisVectors(u[i], v[i], w[i], view);
 
-    idx_stack stk;
+    idx_stack stk[SAMPLES];
 
     int factor = sqrt(SAMPLES);
     for (int j = 0; j < height; j++) {
         for (int i = 0; i < width; i++) {
-            double r = 0, g = 0, b = 0;
+            double r[SAMPLES] = {0}, g[SAMPLES] = {0}, b[SAMPLES] = {0};
             /* MSAA */
+            #pragma omp parallel for
             for (int s = 0; s < SAMPLES; s++) {
-                idx_stack_init(&stk);
-                rayConstruction(d, u, v, w,
+                idx_stack_init(&stk[s]);
+                rayConstruction(d[s], u[s], v[s], w[s],
                                 i * factor + s / factor,
                                 j * factor + s % factor,
                                 view,
                                 width * factor, height * factor);
-                if (ray_color(view->vrp, 0.0, d, &stk, rectangulars, spheres,
-                              lights, object_color,
+                if (ray_color(view->vrp, 0.0, d[s], &stk[s], rectangulars, spheres,
+                              lights, object_color[s],
                               MAX_REFLECTION_BOUNCES)) {
-                    r += object_color[0];
-                    g += object_color[1];
-                    b += object_color[2];
+                    r[s] += object_color[s][0];
+                    g[s] += object_color[s][1];
+                    b[s] += object_color[s][2];
                 } else {
-                    r += background_color[0];
-                    g += background_color[1];
-                    b += background_color[2];
+                    r[s] += background_color[0];
+                    g[s] += background_color[1];
+                    b[s] += background_color[2];
                 }
-                pixels[((i + (j * width)) * 3) + 0] = r * 255 / SAMPLES;
-                pixels[((i + (j * width)) * 3) + 1] = g * 255 / SAMPLES;
-                pixels[((i + (j * width)) * 3) + 2] = b * 255 / SAMPLES;
             }
+
+            double r_tot = r[0] + r[1] + r[2];
+            double g_tot = g[0] + g[1] + g[2];
+            double b_tot = b[0] + b[1] + b[2];
+
+            pixels[((i + (j * width)) * 3) + 0] = r_tot * 255 / SAMPLES;
+            pixels[((i + (j * width)) * 3) + 1] = g_tot * 255 / SAMPLES;
+            pixels[((i + (j * width)) * 3) + 2] = b_tot * 255 / SAMPLES;
+
         }
     }
 }
